@@ -29,7 +29,7 @@ async def validation_exception_handler(
 
 
 @app.post(
-        "/register",
+        "/signup",
         response_model=schemas.Token,
         status_code=status.HTTP_201_CREATED
     )
@@ -46,89 +46,159 @@ async def create_user(data: schemas.UserRegisterRequest):
 @app.post("/login", response_model=schemas.Token)
 async def login_user(data: schemas.UserLoginRequest):
     user = await utils.authenticate_user(
-            email=data.email,
+            username=data.username,
             password=data.password
         )
     if not user:
         raise exceptions.HTTPUnauthorizedException()
     token_expires = timedelta(minutes=config.TOKEN_EXPIRE_MINUTES)
     access_token = utils.create_access_token(
-        data={"sub": user.email},
+        data={"sub": user.username},
         expires_delta=token_expires
     )
     return schemas.Token(access_token=access_token, token_type="Bearer")
 
 
 @app.post(
-        "/expenses",
-        response_model=schemas.ExpenseResponse, 
-        status_code=status.HTTP_201_CREATED
-    )
-async def create_expense(
-        data: schemas.ExpenseRequest,
-        user: Annotated[models.User, Depends(utils.get_current_user)]
-    ):
-    expense = await database.create_expense(data, user.user_id)
-    return expense
+    "/workouts",
+    response_model=schemas.WorkoutResponse,
+    status_code=status.HTTP_201_CREATED
+)
+async def create_workout(
+    data: schemas.WorkoutRequest,
+    user: Annotated[models.User, Depends(utils.get_current_user)]
+):
+    workout = await database.create_workout(data, user.user_id)
+    return workout
 
 
-@app.get("/expenses", response_model=schemas.ExpenseListResponse)
-async def get_expenses(
-        user: Annotated[schemas.UserInDB, Depends(utils.get_current_user)],
-        page: int=1,
-        limit: int=10,
-        category_id: int | None = None,
-        period: schemas.Period | None = None,
-        date_from: date | None = None,
-        date_to: date | None = None
-    ):
-
-    date_from, date_to = utils.get_period(period, date_from, date_to)
-    
-    expenses = await database.get_expenses(
-            user_id=user.user_id, 
-            page=page, 
-            limit=limit, 
-            category_id=category_id, 
-            date_from=date_from, 
-            date_to=date_to
-        )
-    expenses_count = await database.get_expenses_count(
-            user.user_id, category_id, date_from, date_to
-        )
-
-    expenses_response = schemas.ExpenseListResponse(
-        data=expenses,
-        limit=limit,
-        page=page,
-        total=math.ceil(expenses_count / limit)
-    )
-    return expenses_response
+@app.get("/workouts", response_model=schemas.WorkoutListResponse)
+async def get_workouts(
+    user: Annotated[schemas.UserInDB, Depends(utils.get_current_user)],
+):
+    workouts = await database.get_workouts(user=user)
+    workouts_response = schemas.WorkoutListResponse(data=workouts)
+    return workouts_response
 
 
-@app.get("/expenses/{expense_id}", response_model=schemas.ExpenseResponse)
-async def get_expense(
-        expense_id: int, 
-        user: Annotated[schemas.UserInDB, Depends(utils.get_current_user)]
-    ):
-    expense = await database.get_expense(expense_id)
-    if not expense:
+@app.get("/workouts/{workout_id}", response_model=schemas.WorkoutResponse)
+async def get_workout(
+    workout_id: int,
+    user: Annotated[schemas.UserInDB, Depends(utils.get_current_user)]
+):
+    workout = await database.get_workout(workout_id=workout_id)
+    if not workout:
         raise exceptions.HTTPExpenseNotExistsException()
-    return expense
+    return workout
 
 
-@app.put("/expenses/{expense_id}", response_model=schemas.ExpenseResponse)
-async def update_expense(
-        expense_id: int, 
-        data: schemas.ExpenseRequest,
+@app.put("/workouts/{workout_id}", response_model=schemas.WorkoutResponse)
+async def update_workout(
+        workout_id: int, 
+        data: schemas.WorkoutRequest,
         user: Annotated[schemas.UserInDB, Depends(utils.get_current_user)]
     ):
-    expense = await database.update_expense(expense_id, data)
-    return expense
+    workout = await database.update_workout(workout_id, data)
+    return workout
 
-@app.delete("/expenses/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_expense(
-        expense_id: int,
+
+@app.delete("/workouts/{workout_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_workout(
+        workout_id: int,
         user: Annotated[schemas.UserInDB, Depends(utils.get_current_user)]
     ):
-    await database.delete_expense(expense_id)
+    await database.delete_workout(workout_id)
+
+
+@app.get("/muscle_groups", response_model=schemas.MuscleGroups)
+async def get_muscle_groups(
+    user: Annotated[schemas.UserInDB, Depends(utils.get_current_user)],
+):
+    muscle_groups = await database.get_muscle_groups()
+    muscle_groups_response = schemas.MuscleGroups(data=muscle_groups)
+    return muscle_groups_response
+
+
+@app.get(
+    "/muscle_groups/{muscle_group_id}",
+    response_model=schemas.MuscleGroupResponse
+)
+async def get_muscle_group(
+    muscle_group_id: int,
+    user: Annotated[schemas.UserInDB, Depends(utils.get_current_user)]
+):
+    muscle_group = await database.get_muscle_group(
+        muscle_group_id=muscle_group_id
+    )
+    if not muscle_group:
+        raise exceptions.HTTPExpenseNotExistsException()
+    return muscle_group
+
+
+@app.get(
+    "/muscle_groups/{muscle_group_id}/muscles",
+    response_model=schemas.Muscles
+)
+@app.get("/muscles", response_model=schemas.Muscles)
+async def get_muscles(
+    user: Annotated[schemas.UserInDB, Depends(utils.get_current_user)],
+    muscle_group_id: int | None = None
+):
+    muscles = await database.get_muscles(muscle_group_id=muscle_group_id)
+    muscles_response = schemas.Muscles(data=muscles)
+    return muscles_response
+
+
+@app.get(
+    "/muscle_groups/{muscle_group_id}/muscles/{muscle_id}",
+    response_model=schemas.MuscleResponse
+)
+@app.get("/muscles/{muscle_id}", response_model=schemas.MuscleResponse)
+async def get_muscle(
+    muscle_id: int,
+    user: Annotated[schemas.UserInDB, Depends(utils.get_current_user)],
+    muscle_group_id: int | None = None
+):
+    muscle = await database.get_muscle(
+        muscle_id=muscle_id,
+        muscle_group_id=muscle_group_id
+    )
+    if not muscle:
+        raise exceptions.HTTPExpenseNotExistsException()
+    return muscle
+
+
+@app.get(
+    "/muscle_groups/{muscle_group_id}/muscles/{muscle_id}/exercises",
+    response_model=schemas.Exercises
+)
+@app.get("/exercises", response_model=schemas.Exercises)
+async def get_exercises(
+    user: Annotated[schemas.UserInDB, Depends(utils.get_current_user)],
+    muscle_id: int | None = None,
+    muscle_group_id: int | None = None
+):
+    exercises = await database.get_exercises(muscle_id=muscle_id)
+    exercises_response = schemas.Exercises(data=exercises)
+    return exercises_response
+
+
+@app.get(
+    "/muscle_groups/{muscle_group_id}/muscles/{muscle_id}/exercises/{exercise_id}",
+    response_model=schemas.ExerciseResponse
+)
+@app.get("/exercises/{exercise_id}", response_model=schemas.ExerciseResponse)
+async def get_exercise(
+    exercise_id: int,
+    user: Annotated[schemas.UserInDB, Depends(utils.get_current_user)],
+    muscle_id: int | None = None,
+    muscle_group_id: int | None = None
+):
+    exercise = await database.get_exercise(
+        exercise_id=exercise_id,
+        muscle_id=muscle_id,
+        muscle_group_id=muscle_group_id
+    )
+    if not exercise:
+        raise exceptions.HTTPExpenseNotExistsException()
+    return exercise

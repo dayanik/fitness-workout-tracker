@@ -16,7 +16,7 @@ class HTTPEmailNotUniqueException(HTTPException):
 class HTTPExpenseNotExistsException(HTTPException):
     def __init__(
             self, 
-            detail: str="Task with that id not found", 
+            detail: str="Instanse with that id not found", 
             headers: dict={"WWW-Authenticate": "Bearer"}
             ):
         super().__init__(

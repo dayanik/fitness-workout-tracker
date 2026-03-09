@@ -84,6 +84,9 @@ class Exercise(Base):
     workout_exercises: Mapped[list["WorkoutExercise"]] = relationship(
         back_populates="exercise"
     )
+    workout_exercise_history: Mapped[list["WorkoutExerciseHistory"]] = relationship(
+        back_populates="exercise"
+    )
 
 
 class User(Base):
@@ -137,9 +140,11 @@ class WorkoutExercise(Base):
         "Workout", back_populates="workout_exercises"
     )
     rep_rest: Mapped[int]
+    set_number: Mapped[int]
 
 
 class WorkoutHistory(Base):
+    
     __tablename__ = "workout_histories"
 
     workout_history_id: Mapped[int] = mapped_column(
@@ -168,8 +173,8 @@ class WorkoutExerciseHistory(Base):
     exercise_id: Mapped[int] = mapped_column(
         ForeignKey("exercises.exercise_id")
     )
-    exercise_title: Mapped["Exercise"] = relationship(
-        "Exercise", back_populates="workout_exercises_history"
+    exercise: Mapped["Exercise"] = relationship(
+        "Exercise", back_populates="workout_exercise_history"
     )
     workout_history_id: Mapped[int] = mapped_column(
         ForeignKey("workout_histories.workout_history_id")

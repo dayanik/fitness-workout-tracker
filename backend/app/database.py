@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI
 from sqlalchemy import select, func, and_, insert
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from app.config import DATABASE_URL
@@ -147,7 +147,6 @@ MUSCLES_EXERCISES = [
 ]
 
 
-
 async def seed_tables(session: AsyncSession) -> None:
     result = await session.execute(
         select(func.count(models.MuscleGroup.muscle_group_id))
@@ -178,9 +177,9 @@ async def seed_tables(session: AsyncSession) -> None:
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(models.Base.metadata.create_all)
-    
+
     async with async_session_maker() as session:
-          await seed_tables(session)
+        await seed_tables(session)
     yield
 
 
@@ -215,65 +214,53 @@ async def create_user(
 
 
 @connection
-async def get_user(email: str, session: AsyncSession) -> models.User:
-    query = select(models.User).where(models.User.email == email)
+async def get_user(username: str, session: AsyncSession) -> models.User:
+    query = select(models.User).where(models.User.username == username)
     user_row = await session.execute(query)
     return user_row.scalar_one_or_none()
 
 
 @connection
-async def create_expense(
-        data: schemas.ExpenseRequest, 
-        user_id: int,
-        session: AsyncSession
-    ) -> models.Expense:
+async def create_workout(
+    data: schemas.WorkoutRequest,
+    user_id: int,
+    session: AsyncSession
+) -> models.Workout:
+    async with session.begin():
+        workout = models.Workout(
+            title = data.title,
+            description = data.description,
+            set_rest = data.set_rest,
+            user_id = user_id,
+            active = True
+        )
+        session.add(workout)
 
-    category_query = (
-        select(models.Category)
-        .where(models.Category.category_id == data.category_id)
-    )
-    category_result = await session.execute(category_query)
-    category = category_result.scalar_one_or_none()
-    if category is None:
-        raise exceptions.HTTPException(400, "Category_id is not found")
+        workout_exercises = [
+            models.WorkoutExercise(
+                workout = workout,
+                sets = ex.sets,
+                weight= ex.weight,
+                repetitions = ex.repetitions,
+                rep_rest = ex.rep_rest,
+                set_number = ex.set_number,
+                exercise_id = ex.exercise_id
+            ) for ex in data.exercises
+        ]
+        session.add_all(workout_exercises)
 
-    expense = models.Expense(
-        title = data.title,
-        description = data.description,
-        amount = data.amount,
-        category=category
-    )
-    expense.user_id = user_id 
-    session.add(expense)
-    await session.commit()
-    await session.refresh(expense, ["category"])
-    return expense
+    return workout
 
 
 @connection
-async def get_expenses(
-        user_id: int,
-        page: int,
-        limit: int,
-        category_id: int | None, 
-        date_from: datetime, 
-        date_to: datetime,
+async def get_workouts(
+        user: models.User,
         session: AsyncSession
-    ) -> list[models.Expense]:
-    filters = [
-        models.Expense.user_id == user_id,
-        models.Expense.updated_at >= date_from,
-        models.Expense.updated_at <= date_to
-    ]
-    if category_id:
-        filters.append(models.Expense.category_id == category_id)
+    ) -> list[models.Workout]:
+
     query = (
-        select(models.Expense)
-        .options(joinedload(models.Expense.category))
-        .where(*filters)
-        .order_by(models.Expense.updated_at)
-        .limit(limit)
-        .offset((page - 1) * limit)
+        select(models.Workout)
+        .where(models.User == user)
     )
     result = await session.execute(query)
     expenses = result.scalars().all()
@@ -281,82 +268,164 @@ async def get_expenses(
 
 
 @connection
-async def get_expenses_count(
-        user_id: int,
-        category_id: int | None, 
-        date_from: datetime, 
-        date_to: datetime,
+async def get_workout(
+        workout_id: int, 
         session: AsyncSession
-    ):
-    filters = [
-        models.Expense.user_id == user_id,
-        models.Expense.updated_at >= date_from,
-        models.Expense.updated_at <= date_to
-    ]
-    if category_id:
-        filters.append(models.Expense.category_id == category_id)
-
-    count_query = (
-        select(func.count())
-        .select_from(models.Expense)
-        .where(*filters)
-    )
-    total_expenses = await session.scalar(count_query)
-    return total_expenses
-
-
-@connection
-async def get_expense(
-        expense_id: int, 
-        session: AsyncSession
-    ) -> models.Expense | None:
+    ) -> models.Workout | None:
     query = (
-        select(models.Expense)
-        .options(joinedload(models.Expense.category))
-        .where(models.Expense.expense_id == expense_id)
+        select(models.Workout)
+        .where(models.Workout.workout_id == workout_id)
         )
     result = await session.execute(query)
     return result.scalar_one_or_none()
 
 
 @connection
-async def update_expense(
-        expense_id: int, 
-        data: schemas.ExpenseRequest,
+async def update_workout(
+        workout_id: int, 
+        data: schemas.WorkoutRequest,
         session: AsyncSession
-    ) -> models.Expense:
+    ) -> models.Workout:
     
     query = (
-        select(models.Expense)
-        .where(models.Expense.expense_id == expense_id)
+        select(models.Workout)
+        .where(models.Workout.workout_id == workout_id)
     )
     result = await session.execute(query)
-    expense = result.scalar_one_or_none()
+    workout = result.scalar_one_or_none()
 
-    if not expense:
+    if not workout:
         raise exceptions.HTTPExpenseNotExistsException()
     
-    expense.title = data.title
-    expense.description = data.description
-    expense.category_id = data.category_id
-    expense.amount = data.amount
+    workout.title = data.title
+    workout.description = data.description
+    workout.active = data.active
+    workout.set_rest = data.set_rest
     await session.commit()
     
-    return expense
+    return workout
 
 
 @connection
-async def delete_expense(
-        expense_id: int,
+async def delete_workout(
+        workout_id: int,
         session: AsyncSession
     ):
     query = (
-        select(models.Task)
-        .where(models.Expense.expense_id == expense_id)
+        select(models.Workout)
+        .where(models.Workout.workout_id == workout_id)
     )
     result = await session.execute(query)
-    expense = result.scalar_one_or_none()
-    if not expense:
+    workout = result.scalar_one_or_none()
+    if not workout:
         raise exceptions.HTTPExpenseNotExistsException()
-    await session.delete(expense)
+    await session.delete(workout)
     await session.commit()
+
+
+@connection
+async def get_muscle_groups(
+    session: AsyncSession
+) -> list[models.MuscleGroup]:
+    result = await session.execute(select(models.MuscleGroup))
+    muscle_groups = result.scalars().all()
+    return muscle_groups
+
+
+@connection
+async def get_muscle_group(
+    muscle_group_id: int,
+    session: AsyncSession
+) -> models.MuscleGroup:
+    query = (
+        select(models.MuscleGroup)
+        .where(models.MuscleGroup.muscle_group_id == muscle_group_id)
+    )
+    result = await session.execute(query)
+    return result.scalar_one_or_none()
+
+
+@connection
+async def get_muscle(
+    muscle_id: int,
+    muscle_group_id: int | None,
+    session: AsyncSession
+) -> models.Muscle:
+    if muscle_group_id is None:
+        query = (
+            select(models.Muscle)
+            .where(models.Muscle.muscle_id == muscle_id)
+        )
+    else:
+        query = (
+            select(models.Muscle)
+            .where(
+                and_(
+                    models.Muscle.muscle_id == muscle_id,
+                    models.Muscle.muscle_group_id == muscle_group_id
+                )
+            )
+        )
+    result = await session.execute(query)
+    return result.scalar_one_or_none()
+
+
+@connection
+async def get_muscles(
+    muscle_group_id: int,
+    session: AsyncSession
+) -> list[models.Muscle]:
+    if muscle_group_id is None:
+        query = select(models.Muscle)
+    else:
+        query = (
+            select(models.Muscle)
+            .where(models.Muscle.muscle_group_id == muscle_group_id)
+        )
+    result = await session.execute(query)
+    muscles = result.scalars().all()
+    return muscles
+
+
+@connection
+async def get_exercises(
+    muscle_id: int,
+    session: AsyncSession
+) -> list[models.Exercise]:
+    if muscle_id is None:
+        query = (
+            select(models.Exercise)
+            .options(selectinload(models.Exercise.muscles))
+        )
+    else:
+        query = (
+            select(models.Exercise)
+            .options(selectinload(models.Exercise.muscles))
+            .join(models.Exercise.muscles)
+            .where(models.Muscle.muscle_id == muscle_id)
+        )
+
+    result = await session.execute(query)
+    exercises = result.scalars().all()
+    return exercises
+
+
+@connection
+async def get_exercise(
+    exercise_id: int,
+    muscle_id: int | None,
+    muscle_group_id: int | None,
+    session: AsyncSession
+) -> models.Exercise:
+    query = (
+        select(models.Exercise)
+        .options(selectinload(models.Exercise.muscles))
+        .where(models.Exercise.exercise_id == exercise_id)
+    )
+    result = await session.execute(query)
+    exercise = result.scalar_one_or_none()
+    for muscle in exercise.muscles:
+        if muscle.muscle_id == muscle_id:
+            if muscle.muscle_group_id == muscle_group_id:
+                return exercise
+    raise exceptions.HTTPExpenseNotExistsException()

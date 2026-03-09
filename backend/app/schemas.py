@@ -15,17 +15,19 @@ class Token(BaseModel):
 
 
 class TokenData(BaseModel):
-    email: str | None = None
+    username: str | None = None
 
 
 class UserRegisterRequest(BaseModel):
     username: str
     email: str
     password: str
+    first_name: str
+    last_name: str
 
 
 class UserLoginRequest(BaseModel):
-    email: str
+    username: str
     password: str
 
 
@@ -36,36 +38,72 @@ class UserInDB(BaseModel):
     password: str
 
 
-class ExpenseRequest(BaseModel):
+class WorkoutExercise(BaseModel):
+    sets: int
+    weight: int
+    repetitions: int
+    exercise_id: int
+    rep_rest: int
+    set_number: int
+
+
+class WorkoutRequest(BaseModel):
+    workout_id: int
     title: str
     description: str
-    amount: int
-    category_id: int
+    active: bool
+    set_rest: int
+    exercises: list[WorkoutExercise]
 
 
-class CategoryResponse(BaseModel):
+class WorkoutResponse(BaseModel):
+    workout_id: int
     title: str
+    description: str
+    active: bool
+    set_rest: int
+
+
+class WorkoutListResponse(BaseModel):
+    data: list[WorkoutResponse]
+
+
+class MuscleGroupResponse(BaseModel):
+    muscle_group_id: int
+    title: str
+    description: str
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class ExpenseResponse(BaseModel):
-    expense_id: int
+class MuscleGroups(BaseModel):
+    data: list[MuscleGroupResponse]
+
+
+class MuscleResponse(BaseModel):
+    muscle_id: int
     title: str
     description: str
-    amount: int
-    category_id: int
-    category: CategoryResponse
-    updated_at: datetime
+    muscle_group_id: int
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class ExpenseListResponse(BaseModel):
-    data: list[ExpenseResponse]
-    page: int
-    limit: int
-    total: int
+class Muscles(BaseModel):
+    data: list[MuscleResponse]
+
+
+class ExerciseResponse(BaseModel):
+    exercise_id: int
+    title: str
+    description: str
+    muscles: list[MuscleResponse]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class Exercises(BaseModel):
+    data: list[ExerciseResponse]
 
 
 class WeekdayEnum(Enum):
