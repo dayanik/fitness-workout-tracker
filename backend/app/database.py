@@ -260,11 +260,13 @@ async def get_workouts(
 
     query = (
         select(models.Workout)
-        .where(models.User == user)
+        .options(selectinload(models.Workout.workout_exercises)
+        )
+        .where(models.Workout.user == user)
     )
     result = await session.execute(query)
-    expenses = result.scalars().all()
-    return expenses
+    workouts = result.scalars().all()
+    return workouts
 
 
 @connection
@@ -274,6 +276,7 @@ async def get_workout(
     ) -> models.Workout | None:
     query = (
         select(models.Workout)
+        .options(selectinload(models.Workout.workout_exercises))
         .where(models.Workout.workout_id == workout_id)
         )
     result = await session.execute(query)
@@ -289,6 +292,7 @@ async def update_workout(
     
     query = (
         select(models.Workout)
+        .options(selectinload(models.Workout.workout_exercises))
         .where(models.Workout.workout_id == workout_id)
     )
     result = await session.execute(query)

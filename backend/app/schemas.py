@@ -38,7 +38,7 @@ class UserInDB(BaseModel):
     password: str
 
 
-class WorkoutExercise(BaseModel):
+class WorkoutExerciseRequest(BaseModel):
     sets: int
     weight: int
     repetitions: int
@@ -48,12 +48,24 @@ class WorkoutExercise(BaseModel):
 
 
 class WorkoutRequest(BaseModel):
-    workout_id: int
     title: str
     description: str
     active: bool
     set_rest: int
-    exercises: list[WorkoutExercise]
+    exercises: list[WorkoutExerciseRequest]
+
+
+class WorkoutExerciseResponse(BaseModel):
+    workout_exercise_id: int
+    sets: int
+    weight: int
+    repetitions: int
+    exercise_id: int
+    workout_id: int
+    rep_rest: int
+    set_number: int
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WorkoutResponse(BaseModel):
@@ -62,6 +74,9 @@ class WorkoutResponse(BaseModel):
     description: str
     active: bool
     set_rest: int
+    workout_exercises: list[WorkoutExerciseResponse]
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WorkoutListResponse(BaseModel):
